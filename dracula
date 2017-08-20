@@ -1,0 +1,633 @@
+#!/usr/bin/env python
+"""
+        Author: Bukman, glayn2bukman@gmail.com, +256-701-173-049, +256-783-573-700
+        Use: embed/extract files in/from other files
+        Command-line usage:
+            dracula -[command] -[options] args
+
+            eg:
+                dracula --embed[-e ] --parent[-p ]=FILE file1 file2 file3 ... -o OUT-DIR --name=NAME      # embed files into FILE
+                dracula --extract[-x ] --parent[-p ]=FILE file1 file2 file3 ...  -o OUT-DIR --name=NAME   # extract filed from FILE
+                dracula --show-files[-s] FILE # FILE is parent file                                       # show embedded files in FILE
+                dracula -s --password[-P]=PASSWORD FILE                                                   # show files embedded with password
+                
+                dracula --vc # do version control to the JERM-VC service
+
+             DEFAULTS:
+                -o[--out= ]          : CURRENT_DIR
+                --name[-n ]          : dracula.{parent.name}
+                out-file             : {-o}/{--name}.{parent.ext}
+"""
+
+############# GETTING COMMANDLINE PASSWORD ###############
+import sys
+
+jermVC_url = "http://0.0.0.0:9999/"
+jermVC_password = "jermVC"
+
+class _Getch:
+    """Gets a single character from standard input.  Does not echo to the
+screen."""
+    def __init__(self):
+        try:
+            self.impl = _GetchWindows()
+        except ImportError:
+            self.impl = _GetchUnix()
+
+    def __call__(self): return self.impl()
+
+
+class _GetchUnix:
+    def __init__(self):
+        import tty, sys
+
+    def __call__(self):
+        import sys, tty, termios
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+
+
+class _GetchWindows:
+    def __init__(self):
+        import msvcrt
+
+    def __call__(self):
+        import msvcrt
+        return msvcrt.getch()
+
+
+
+def getpass(prompt="Password: ", mask='.'):
+    sys.stdout.write(prompt)
+    getch = _Getch()
+    password, index = "", 0
+    while 1:
+        c = getch()
+        if c=='\x03': # Ctrl + C
+            return
+        elif c=='\x04': # Ctrl + D
+            return
+        elif c=='\x1a': # Ctrl + Z
+            sys.exit(1)
+        elif c=='\n' or c=='\r':
+            print
+            return password
+
+        if str(ord(c))=='65' or \
+            str(ord(c))=='66' or \
+            str(ord(c))=='67' or \
+            str(ord(c))=='68' or \
+            str(ord(c))=='27' or \
+            str(ord(c))=='91': # left n right
+            continue
+        elif str(ord(c))=='127': # backspace
+            continue
+
+        password += c
+        sys.stdout.write(mask)
+
+##########################################################
+
+import os
+
+SIGN = " BUKMAN-DRACULA-SIGN "
+PASSWORD_SIGN = " BUKMAN-DRACULA-PASSWORD-SIGN "
+
+def embed(parent, files, out, password=""):
+    """
+        parent: parent file (image, audio, video, zip, executable, etc...)
+        files: files [including directories] to embed in parent file
+        out: FILE
+    """
+
+    try:
+        temp = open(parent, "rb").read()
+    except:
+        print "\n \033[1;31;31mFailed\033[0m to open %s, are you root?\n"%parent
+        return "\nOperation \033[1;31;31mFailed\033[0m\n"
+
+    try:
+        out_temp = open(out, "wb")
+    except:
+        print "\n \033[1;31;31mFailed\033[0m to create %s, are you root?\n"%out_temp
+        return "\nOperation \033[1;31;31mFailed\033[0m\n"
+
+    if password!="":
+        temp += "\n--> %s <--\n%s\n"%(PASSWORD_SIGN, password)
+
+    for _file in files:
+        if not (os.path.isfile(_file) or os.path.isdir(_file)): # file not present at all
+            print "\n \"%s\"...\033[1;31;31mFailed\033[0m(not found!), skipped\n"%_file
+            continue
+
+        if os.path.isfile(_file):
+            try:
+                data = open(_file, "rb").read()
+            except:
+                print "\n \033[1;31;31mFailed\033[0m to open %s, file left out. Are you root?\n"%_file
+                continue
+
+            temp += "\n-->"+SIGN+os.path.split(_file)[-1]+"<--\n"+data
+            print "\"%s\"...\033[1;32;32mOk\033[0m"%os.path.split(_file)[-1]
+
+        elif os.path.isdir(_file):
+            dirs = os.walk(_file)
+
+            parent_dir = None # len to skip to get abstract dir more like /home/NNN/Desktop -> ~/Desktop
+            _parent_dir = ""
+
+            while 1:
+                try:
+                    cur_dir = dirs.next()
+                    _dir, _files = os.path.realpath(cur_dir[0]), cur_dir[-1]
+                    if parent_dir==None:
+                        parent_dir = os.path.split(_dir)[-1] # convert path to unit-like format and remove any trailing "/"
+                        #if "/" in parent_dir:
+                        #    parent_dir = parent_dir.split('/')[-1]
+                        _parent_dir = _dir
+
+                    for __file in _files: # leave out empty directories!
+                        try:
+                            data = open(os.path.join(_dir, __file), "rb").read()
+                        except:
+                            print "\n \033[1;31;31mFailed\033[0m to open %s, file left out. Are you root?\n"%__file
+                            continue
+
+                        _temp_dir = parent_dir+os.path.join(_dir, __file)[len(_parent_dir):]
+                        temp += "\n-->"+SIGN+_temp_dir.replace('\\','/')+"<--\n"+data
+
+                        print "\"%s\"...\033[1;32;32mOk\033[0m"%_temp_dir.replace('\\','/')
+
+                except:
+                    break
+
+
+    out_temp.write(temp+"\n-->"+SIGN+"DRACULA-END"+"<--\n")
+    return "\n\033[1;32;32mOperation successfull...\033[0m\n"
+
+
+def extract(parent, files, out, password=""):
+    """
+        parent: parent file (image, audio, video, zip, executable, etc...)
+        files: files [including directories] to extract from parent file
+        out: DIR
+    """
+
+    if files==[]: # extract all files
+        files = get_files(parent, password=password)
+        if files==False: # password is incorrect!
+            return "\033[1;33;33mOperation dumped...\033[0m"
+        if files==[]:
+            print "No files embeded in \"%s\""%parent
+            return "\033[1;33;33mOperation dumped...\033[0m"
+
+    elif files=="select":
+        print "--------------- SELECTING -----------------\n",
+        files, all_files = [], get_files(parent, password=password)
+        if all_files==False: # password is incorrect!
+            return "\033[1;33;33mOperation dumped...\033[0m"
+        for single_file in all_files:
+            add = raw_input("Extract \"%s\"? (\033[1;32;32my\033[0m/\033[1;31;31mn\033[0m) "%single_file)
+            if add.lower()!="n": files.append(single_file)
+        print "--------------- DONE SELECTING -----------------\n\n"
+
+    else:
+        all_files = get_files(parent, password=password)
+        if all_files==False: # password is incorrect!
+            return "\033[1;33;33mOperation dumped...\033[0m"
+
+    parent_dir = out
+
+    try:
+        os.mkdir(parent_dir)
+    except:
+        if os.path.isdir(parent_dir):
+            print "directory \"%s\" alread exists..."%parent_dir
+            overwrite = raw_input('overerite? (\033[1;32;32my\033[0m/\033[1;31;31mn\033[0m) ')
+            if overwrite.lower()=='n':
+                return "\033[1;33;33mOperation dumped...\033[0m"
+        else:
+            print "\n \033[1;31;31mFailed\033[0m to create directory \"%s\"\n"%parent_dir
+            return "\033[1;33;33mOperation dumped...\033[0m"
+
+    try:
+        data = open(parent, "rb").readlines()
+    except:
+        print "\n \033[1;31;31mFailed\033[0m to open \"%s\", are you root?\n"%parent
+        return "\033[1;33;33mOperation dumped...\033[0m"
+
+    code, recording = "", False
+
+    for line in data:
+        if SIGN in line:
+            if len(line)>len(SIGN) and line[:3]=='-->':
+                _file_ = line.strip()[len("-->"+SIGN):-3]
+
+                if recording:
+                    code = code[:-1] # remove trailing "\n"
+                    if not "/" in _file:
+                        if _file!="DRACULA-END":
+                            try:
+                                f = open(os.path.join(parent_dir,_file), "wb")
+                                f.write(code)
+                                f.close()
+                                print "\"%s\"...\033[1;32;32mOk\033[0m"%_file
+                            except:
+                                print "\n\033[1;31;31mFailed\033[0m to create \"%s\"...skipping\n"%(os.path.join(parent_dir,_file),)
+
+                    else:
+                        dirs = _file.split('/')
+                        path = parent_dir
+
+                        for _dir_ in dirs[:-1]:
+                            path = os.path.join(path, _dir_)
+                            if not os.path.isdir(path):
+                                try:
+                                    os.mkdir(path)
+                                except:
+                                    print "\n\033[1;31;31mFailed\033[0m to create directory \"%s\"...skipped\n"%path
+                        try:
+                            f = open(os.path.join(path,dirs[-1]), "wb")
+                            f.write(code)
+                            f.close()
+                            print "\"%s\"...\033[1;32;32mOk\033[0m"%_file
+                        except:
+                            print "\n \033[1;31;31mFailed\033[0m to create \"%s\"...skipping\n*"%(os.path.join(parent_dir,_file),)
+
+                _file = _file_
+
+                if _file in files:
+                    code, recording = "", True
+                else:
+                    code, recording = "", False
+            else:
+                if recording: code += line
+        else:
+            if recording: code += line
+
+    return "\n\033[1;32;32mOperation successfull...\033[0m"
+
+def get_files(parent, password=""):
+    """
+        parent: parent file (image, audio, video, zip, executable, etc...)
+    """
+
+    files = []
+
+    try:
+        data = open(parent, "rb").readlines()
+    except:
+        print "\n \033[1;31;31mFailed\033[0m to open \"%s\", are you root?\n"%parent
+        return files
+
+    password_line_found = False
+    for index, line in enumerate(data):
+        if PASSWORD_SIGN in line:
+            password_line_found = True
+            continue
+
+        if password_line_found:
+            if password!=line[:-1]:
+                if password=="":
+                    trials = 1
+                    while trials<=3:
+                        pswd = getpass("\033[1;33;33mExtration password (%d trials left):\033[0m "%(4-trials))
+                        if pswd==line[:-1]: break
+                        trials += 1
+
+                    if trials>3:
+                        print "\033[1;31;31mIncorrect password given!\033[0m"
+                        return False
+
+                else:
+                    print "\033[1;31;31mIncorrect password given!\033[0m"
+                    return False
+
+            password_line_found=False
+
+        if SIGN in line:
+            if len(line)>len(SIGN) and line[:3]=='-->':
+                _file = line.strip()[len("-->"+SIGN):-3]
+                if _file!="DRACULA-END": files.append(_file)
+
+    if files==[]:
+        print "No files embeded in \"%s\""%parent
+        print "\033[1;33;33mOperation dumped...\033[0m"
+    return files
+
+if __name__=="__main__":
+    import getopt, sys
+
+    def help():
+        print """\033[33;33m
+Usage: dracula [OPTION] [ARGS]
+Author: Bukman <\033[3;34;34mglayn2bukman@gmail.com\033[0m, +256-701-173-049, +256-783-573-700>\033[33;33m
+
+Embed and/or Extract files into/from parent file
+
+Mandatory arguments to long options are mandatory for short options too.
+  -h --help                 show this help
+  -e --embed                embed files
+  -x --extract              extract files
+                            {-x --all} or {-x} with no file args will extract all files in parent
+                            {-x --select} will let u select what files to extract
+  -s --show-files           show files in embedded parent file
+                                usage:  dracula -s PARENT-FILE
+  -p --parent=FILE          parent file
+  -n --name=                name of output file[with extenstion]
+                                 * extension is adopted from parent file
+                                 * default is dracula.parent-name
+  -o --out                  output directory
+  -P --password=PASSWORD    for password protected files
+                                 * -e -P PASSWORD embeds files with password
+                                 * -x -P PASSWORD extracts files embedded with password
+  --vc                      perform version control on a JERM project
+  --clone                   clone remote JERM repository
+
+        """
+
+    if len(sys.argv)==1:
+        help()
+        sys.exit(0)
+
+    try:
+        args = getopt.gnu_getopt(sys.argv[1:], "p: s e x o: n: h P:",
+                      longopts=["out=", "name=", "parent=", "embed", "extract", "vc",
+                                "clone", "help", "show-files", "all", "select","password="])
+    except:
+        help()
+        sys.exit(1)
+
+
+    _options, files = args
+    options = {}
+    for option in _options: options[option[0]] = option[1]
+
+    if options.has_key('-h') or options.has_key('--help'):
+        help()
+        sys.exit(0)
+
+    password = ""
+
+    if options.has_key('-P'): password = options['-P']
+    elif options.has_key("--password"): password = options['--password']
+
+    if options.has_key('-s') or options.has_key('--show-files'):
+        if files==[]:
+            print "--show-files usage: dracula -s PARENT-FILE"
+            sys.exit(1)
+        if os.path.isdir(files[0]):
+            print "--show-files usage: dracula -s PARENT-FILE; DIR given!"
+            sys.exit(1)
+        if not os.path.isfile(files[0]):
+            print "%s: file can\'t be found!"%files[0]
+            sys.exit(1)
+
+        results = get_files(files[0], password=password)
+        if results==[]: pass
+        elif results==False: sys.exit(1)
+        else:
+            print
+            for index, res in enumerate(results): print "  %d) %s"%(index+1, res)
+            print
+        sys.exit(0)
+
+    if not (options.has_key('-p') or options.has_key('--parent')):
+        if not (options.has_key("--vc") or options.has_key("--clone")):
+            print "\033[1;33;33mParent File ?\033[0m"
+            sys.exit(1)
+
+    if options.has_key("--vc"):
+        print "\033[0;33;33mversion control...\033[0m\n"
+
+        try: 
+            import requests
+        except: 
+            sys.exit("\033[0;31;31mplease install the \033[0;32;32mrequests\033[0m\033[0;31;31m library. its used for communication!\033[0m")
+
+        uname = raw_input("jerm-VC username: ")
+        pswd = getpass("jerm-VC password: ")
+        server_url = raw_input("jerm-VC url (default is <{}>): ".format(jermVC_url))
+        project = raw_input("project's path: ")
+        version = raw_input("project's version/comment (<=60 xters): ")
+        
+        server_url = jermVC_url if (not server_url) else server_url
+        server_url = server_url+"/" if not(server_url.endswith("/")) else server_url
+        
+        if len(version)==0 or len(version)>60: sys.exit("\033[0;31;31mversion/comment should be <=60 xters long!\033[0m")
+        
+        if ("/" in version) or ("\\" in version) or (".." in version):
+            sys.exit("\033[0;31;31mversion cant contain <..>, </> and <\\>\033[0m")
+        
+        if project:
+            if project[0]=="~": sys.exit("\033[0;31;31mplease dont use the linux path style(path begnning with ~). supported styles are: /a/b/c, a/b/c, ../b/c, ./a/b/c\033[0m")
+        
+        project = os.path.realpath(project)
+        
+        if os.path.isfile(project):
+            sys.exit("\033[0;31;31mproject MUST be a directory not a file!\033[0m")
+        if not os.path.exists(project):
+            sys.exit("\033[0;31;31mcant find the project path specified!\033[0m")
+        
+        parentdata = "" # parent-file is only one byte
+        
+        with open(os.path.split(project)[-1]+".jermVCdata.png", "wb") as parent: parent.write(parentdata)
+        
+        print "\n\033[0;33;33membeding project into a jermVC file...\033[0m\n"
+        status = embed(os.path.split(project)[-1]+".jermVCdata.png", 
+                    [project], 
+                    os.path.split(project)[-1]+".jerm", 
+                    password=jermVC_password)
+        
+        print status
+        print "\033[0;33;33msending jermVC file to remote repository...\033[0m"
+        
+        data = {"uname":uname, "pswd":pswd, "project":os.path.split(project)[-1]+".jerm", "version":version}
+        files = {"project":open(os.path.split(project)[-1]+".jerm", "rb")}
+        
+        try:
+            reply = requests.post(jermVC_url+"upload_project", data=data, files=files)
+        except:
+            os.remove(os.path.split(project)[-1]+".jermVCdata.png")
+            os.remove(os.path.split(project)[-1]+".jerm")
+            sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
+        
+        print "\n\033[0;33;33mjermVC server reply\033[0m: \033[0;34;34m"+reply.text+"\033[0m"
+
+        print "\n\033[0;33;33mcleaning up environment...\033[0m"
+        os.remove(os.path.split(project)[-1]+".jermVCdata.png")
+        os.remove(os.path.split(project)[-1]+".jerm")
+        
+        sys.exit("\nbye")
+
+    if options.has_key("--clone"):
+        print "\033[0;33;33mcloning jerm project...\033[0m\n"
+
+        try: 
+            import requests
+        except: 
+            sys.exit("\033[0;31;31mplease install the \033[0;32;32mrequests\033[0m\033[0;31;31m library. its used for communication!\033[0m")
+        try: 
+            import urllib
+        except: 
+            sys.exit("\033[0;31;31mplease install the \033[0;32;32murllib\033[0m\033[0;31;31m library. its used for file fetching!\033[0m")
+
+        uname = raw_input("jerm-VC username: ")
+        pswd = getpass("jerm-VC password: ")
+        server_url = raw_input("jerm-VC url (default is <{}>): ".format(jermVC_url))
+        
+        server_url = jermVC_url if (not server_url) else server_url
+        server_url = server_url+"/" if not(server_url.endswith("/")) else server_url
+
+        data = {"uname":uname, "pswd":pswd}
+
+        print "\033[0;33;33mfetching jermVC repository projects...\033[0m"
+        try:
+            reply = requests.post(jermVC_url+"list_projects", data=data)
+        except:
+            sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
+
+        projects = reply.text
+        if not projects:
+            sys.exit("\n\033[0;31;31mno projects found in the jermVC repository\033[0m")
+
+        projects = projects.split(",")
+        print "\033[0;33;33mprojects in repository:\033[0m\n"
+        
+        for index, project in enumerate(projects):
+            print " {}) {}".format(index+1, project) 
+
+        project = raw_input("\nselect repository number: ")
+        
+        try: 
+            project = int(project)-1
+            if (project>=len(projects) or project<0): sys.exit("\n\033[0;31;31msilly number entered! exiting...\033[0m")
+        except: sys.exit("\n\033[0;31;31msilly number entered! exiting...\033[0m")
+
+        project = projects[project]
+        
+        data["project"] = project
+
+        print "\033[0;33;33mfetching <{}> repository versions...\033[0m".format(project)
+        try:
+            reply = requests.post(jermVC_url+"list_project_versions", data=data)
+        except:
+            sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
+
+        versions = reply.text.split("\n")
+
+        for index, version in enumerate(versions):
+            print " {}) {}".format(index+1, version[:-1*len(".jerm")]) 
+
+        version = raw_input("\nselect version number: ")
+
+        try: 
+            version = int(version)-1
+            if (version>=len(versions) or version<0): sys.exit("\n\033[0;31;31msilly number entered! exiting...\033[0m")
+        except: sys.exit("\n\033[0;31;31msilly number entered! exiting...\033[0m")
+
+        version = versions[version]
+        out = "{}--{}".format(project, version)
+        
+        data["version"] = version
+
+        print "\033[0;33;33mfetching <{}> repository version {}...\033[0m".format(project, version)
+        try:
+            reply = requests.post(jermVC_url+"fetch_project_version", data=data)
+        except:
+            sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
+
+        with open(out, "wb") as fout: fout.write(reply.text)
+
+        files = []
+        status = extract(out, files, out[:-1*len(".jerm")], password=jermVC_password)
+
+        print "\n\033[0;33;33mcleaning up environment...\033[0m"
+        os.remove(out)
+
+        sys.exit("\nbye")        
+
+    parent = None
+
+    if options.has_key('-p'): parent=options['-p']
+    elif options.has_key('--parent'): parent=options['--parent']
+
+    parent = os.path.realpath(parent)
+
+    if not (  (options.has_key('-e') or options.has_key('--embed')) or
+            (options.has_key('-x') or options.has_key('--extract')) ):
+        print "\033[1;33;33mEmbed[-e] or Extract[-x]?\033[0m"
+        sys.exit(1)
+
+    elif (options.has_key('-e') or options.has_key('--embed')) and (options.has_key('-x') or options.has_key('--extract')):
+        print "\033[1;33;33mEmbed[-e] or Extract[-x]?\033[0m"
+        sys.exit(1)
+
+    if options.has_key('-e') or options.has_key('--embed'):
+        cmd = 'embed'
+    if options.has_key('-x') or options.has_key('--extract'):
+        cmd = 'extract'
+    if options.has_key("--vc"):
+        cmd = "version-control"
+
+    out = '.'
+    if options.has_key('-o'):
+        out = options['-o']
+    elif options.has_key('--out'):
+        out = options['--out']
+
+    out = os.path.realpath(out)
+
+    if not os.path.isdir(out):
+        print "%s: \033[1;31;31mdir not found!\033[0m"%out
+        sys.exit(1)
+
+    _name = os.path.split(parent)[-1]
+
+    if options.has_key('-n'):
+        name = options['-n']
+    elif options.has_key('--name'):
+        name = options['--n']
+    else:
+        if '.' in _name:
+            splits = _name.split('.')
+            if cmd=='embed':
+                splits.insert(-2,'dracula')
+            elif cmd=='extract':
+                splits.append('dir')
+
+            name = '.'.join(splits)
+        else:
+            if cmd=='embed':
+                name = _name+'.dracula'
+            elif cmd=='extract':
+                name = _name+'.dir'
+
+
+    out = os.path.join(out, name)
+
+    if os.path.isfile(out) and cmd=='embed':
+        overwrite = raw_input("%s already exists...overwrite? (\033[1;32;32my\033[0m/\033[1;31;31mn\033[0m) "%out)
+        if overwrite.lower()=='n':
+            print "\033[1;33;33mOperation .dumped...\033[0m"
+            sys.exit(0)
+
+    if files==[] and cmd=='embed':
+        print "\033[1;33;33mFiles to %s ?\033[0m"%cmd
+        sys.exit(1)
+
+    if cmd=='embed':
+        status = embed(parent, files, out, password=password)
+    elif cmd=='extract':
+        if "--all" in options: files = [] # --all gives same effect as providing no file args
+        if "--select" in options: files = "select" # select files to extract
+
+        status = extract(parent, files, out, password=password)
+
+    print status
