@@ -22,7 +22,9 @@
 ############# GETTING COMMANDLINE PASSWORD ###############
 import sys
 
-jermVC_url = "http://0.0.0.0:9999/"
+jermVC_address = "0.0.0.0"
+jermVC_port = 9999
+jermVC_twisted_port = 9998
 jermVC_password = "jermVC"
 
 class _Getch:
@@ -413,11 +415,11 @@ Mandatory arguments to long options are mandatory for short options too.
 
         uname = raw_input("jerm-VC username: ")
         pswd = getpass("jerm-VC password: ")
-        server_url = raw_input("jerm-VC url (default is <{}>): ".format(jermVC_url))
+        server_url = raw_input("jerm-VC url (default is <{}>): ".format(jermVC_address))
         project = raw_input("project's path: ")
         version = raw_input("project's version/comment (<=60 xters): ")
         
-        server_url = jermVC_url if (not server_url) else server_url
+        server_url = "http://{}:{}".format(jermVC_address, jermVC_port) if (not server_url) else "http://{}:{}".format(server_url, jermVC_port)
         server_url = server_url+"/" if not(server_url.endswith("/")) else server_url
         
         if len(version)==0 or len(version)>60: sys.exit("\033[0;31;31mversion/comment should be <=60 xters long!\033[0m")
@@ -452,13 +454,15 @@ Mandatory arguments to long options are mandatory for short options too.
         files = {"project":open(os.path.split(project)[-1]+".jerm", "rb")}
         
         try:
-            reply = requests.post(jermVC_url+"upload_project", data=data, files=files)
+            reply = requests.post(server_url+"upload_project", data=data, files=files)
         except:
             os.remove(os.path.split(project)[-1]+".jermVCdata.png")
             os.remove(os.path.split(project)[-1]+".jerm")
             sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
         
-        print "\n\033[0;33;33mjermVC server reply\033[0m: \033[0;34;34m"+reply.text+"\033[0m"
+        if ("ERROR" in reply.text): color = "\033[0;31;31m"
+        else:  color = "\033[0;34;34m"
+        print "\n\033[0;33;33mjermVC server reply\033[0m: {}".format(color)+reply.text+"\033[0m"
 
         print "\n\033[0;33;33mcleaning up environment...\033[0m"
         os.remove(os.path.split(project)[-1]+".jermVCdata.png")
@@ -480,18 +484,25 @@ Mandatory arguments to long options are mandatory for short options too.
 
         uname = raw_input("jerm-VC username: ")
         pswd = getpass("jerm-VC password: ")
-        server_url = raw_input("jerm-VC url (default is <{}>): ".format(jermVC_url))
+        server_url = raw_input("jerm-VC url (default is <{}>): ".format(jermVC_address))
         
-        server_url = jermVC_url if (not server_url) else server_url
+        _su = server_url
+        server_url = "http://{}:{}".format(jermVC_address, jermVC_port) if (not server_url) else "http://{}:{}".format(server_url, jermVC_port)
         server_url = server_url+"/" if not(server_url.endswith("/")) else server_url
 
         data = {"uname":uname, "pswd":pswd}
 
         print "\033[0;33;33mfetching jermVC repository projects...\033[0m"
         try:
-            reply = requests.post(jermVC_url+"list_projects", data=data)
+            reply = requests.post(server_url+"list_projects", data=data)
         except:
             sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
+
+        if ("ERROR" in reply.text): color = "\033[0;31;31m"
+        else:  color = "\033[0;34;34m"
+        print "\n\033[0;33;33mjermVC server reply\033[0m: {}".format(color)+reply.text+"\033[0m"
+
+        if "31;31m" in color: sys.exit()
 
         projects = reply.text
         if not projects:
@@ -516,7 +527,7 @@ Mandatory arguments to long options are mandatory for short options too.
 
         print "\033[0;33;33mfetching <{}> repository versions...\033[0m".format(project)
         try:
-            reply = requests.post(jermVC_url+"list_project_versions", data=data)
+            reply = requests.post(server_url+"list_project_versions", data=data)
         except:
             sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
 
@@ -537,13 +548,16 @@ Mandatory arguments to long options are mandatory for short options too.
         
         data["version"] = version
 
+        su = "http://{}:{}".format(jermVC_address, jermVC_twisted_port) if (not _su) else "http://{}:{}".format(_su, jermVC_twisted_port)
+        su = su+"/" if not(su.endswith("/")) else su
+
         print "\033[0;33;33mfetching <{}> repository version {}...\033[0m".format(project, version)
         try:
-            reply = requests.post(jermVC_url+"fetch_project_version", data=data)
+            reply = urllib.urlretrieve("{}{}/{}".format(su, project, version), filename=out)
         except:
             sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
 
-        with open(out, "wb") as fout: fout.write(reply.text)
+        #with open(out, "wb") as fout: fout.write(unicode(reply.text).encode("utf-8"))
 
         files = []
         status = extract(out, files, out[:-1*len(".jerm")], password=jermVC_password)

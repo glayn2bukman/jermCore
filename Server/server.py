@@ -10,15 +10,15 @@ path = os.path.dirname(__file__)
 projects_dir = os.path.join(path, "projects")
 
 ERRORS = {
-    "auth-error":"authentication Error!",
-    "file-error":"file not found in jermProjects!",
-    "filename-error":"file name contains invalid characters!",
-    "nofile-error":"no file given in attachments!",
-    "notjermproject-error":"file is NOT a jerm  project!",
-    "version-error":"version contains invalid characters (/, .. and \\ are not allowed)!",
-    "noversion-error": "no version was given for the project!",
-    "noproject-error":"no project given!",
-    "noprojectversion-error":"the project version specified does no exist!",
+    "auth-error":"ERROR: authentication Error!",
+    "file-error":"ERROR: file not found in jermProjects!",
+    "filename-error":"ERROR: file name contains invalid characters!",
+    "nofile-error":"ERROR: no file given in attachments!",
+    "notjermproject-error":"ERROR: file is NOT a jerm  project!",
+    "version-error":"ERROR: version contains invalid characters (/, .. and \\ are not allowed)!",
+    "noversion-error": "ERROR: no version was given for the project!",
+    "noproject-error":"ERROR: no project given!",
+    "noprojectversion-error":"ERROR: the project version specified does no exist!",
 }
 
 # define a function that wil allow responses to be sent to pages not served by this server
@@ -55,6 +55,7 @@ def upload_project():
 @app.route("/list_projects", methods=["POST"])
 def list_projects():
     if not(("uname" in request.form) and ("pswd" in request.form)): return reply_to_remote(ERRORS["auth-error"])
+    if request.form["uname"]!=auth["uname"] or request.form["pswd"]!=auth["pswd"]: return reply_to_remote(ERRORS["auth-error"])
 
     projects = os.listdir(projects_dir)
 
@@ -64,6 +65,8 @@ def list_projects():
 def list_project_versions():
     if not(("uname" in request.form) and ("pswd" in request.form)): return reply_to_remote(ERRORS["auth-error"])
     if not ("project" in request.form): return reply_to_remote(ERRORS["noproject-error"])
+
+    if request.form["uname"]!=auth["uname"] or request.form["pswd"]!=auth["pswd"]: return reply_to_remote(ERRORS["auth-error"])
 
     project = request.form["project"]
 
@@ -76,6 +79,7 @@ def list_project_versions():
 @app.route("/fetch_project_version", methods=["POST"])
 def fetch_project_version():
     if not(("uname" in request.form) and ("pswd" in request.form)): return reply_to_remote(ERRORS["auth-error"])
+    if request.form["uname"]!=auth["uname"] or request.form["pswd"]!=auth["pswd"]: return reply_to_remote(ERRORS["auth-error"])
     if not ("project" in request.form): return reply_to_remote(ERRORS["noproject-error"])
     if not ("version" in request.form): return reply_to_remote(ERRORS["noversion-error"])
     
@@ -86,7 +90,10 @@ def fetch_project_version():
 
     return send_from_directory(os.path.join(projects_dir, project), projectversion)
 
+print path
 if __name__=="__main__":
+    import threading
+    threading.Thread(target=os.system, args=("twistd -n web --path=\"{}\" -p 9998".format(os.path.join(path, "projects")), )).start()
     app.run("0.0.0.0", 9999, debug=1, threaded=1)
     
     
