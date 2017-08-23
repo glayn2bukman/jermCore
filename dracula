@@ -351,6 +351,7 @@ Mandatory arguments to long options are mandatory for short options too.
                                  * -x -P PASSWORD extracts files embedded with password
   --vc                      perform version control on a JERM project
   --clone                   clone remote JERM repository
+  --vc-admin                add/remove and edit vc-users, view all JERM repositories 
 
         """
 
@@ -360,7 +361,7 @@ Mandatory arguments to long options are mandatory for short options too.
 
     try:
         args = getopt.gnu_getopt(sys.argv[1:], "p: s e x o: n: h P:",
-                      longopts=["out=", "name=", "parent=", "embed", "extract", "vc",
+                      longopts=["out=", "name=", "parent=", "embed", "extract", "vc", "vc-admin",
                                 "clone", "help", "show-files", "all", "select","password="])
     except:
         help()
@@ -401,7 +402,7 @@ Mandatory arguments to long options are mandatory for short options too.
         sys.exit(0)
 
     if not (options.has_key('-p') or options.has_key('--parent')):
-        if not (options.has_key("--vc") or options.has_key("--clone")):
+        if not (options.has_key("--vc") or options.has_key("--clone") or options.has_key("--vc-admin")):
             print "\033[1;33;33mParent File ?\033[0m"
             sys.exit(1)
 
@@ -415,7 +416,7 @@ Mandatory arguments to long options are mandatory for short options too.
 
         uname = raw_input("jerm-VC username: ")
         pswd = getpass("jerm-VC password: ")
-        server_url = raw_input("jerm-VC url (default is <{}>): ".format(jermVC_address))
+        server_url = raw_input("jerm-VC address (default is <{}>): ".format(jermVC_address))
         project = raw_input("project's path: ")
         version = raw_input("project's version/comment (<=60 xters): ")
         
@@ -484,7 +485,7 @@ Mandatory arguments to long options are mandatory for short options too.
 
         uname = raw_input("jerm-VC username: ")
         pswd = getpass("jerm-VC password: ")
-        server_url = raw_input("jerm-VC url (default is <{}>): ".format(jermVC_address))
+        server_url = raw_input("jerm-VC address (default is <{}>): ".format(jermVC_address))
         
         _su = server_url
         server_url = "http://{}:{}".format(jermVC_address, jermVC_port) if (not server_url) else "http://{}:{}".format(server_url, jermVC_port)
@@ -498,15 +499,13 @@ Mandatory arguments to long options are mandatory for short options too.
         except:
             sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
 
-        if ("ERROR" in reply.text): color = "\033[0;31;31m"
-        else:  color = "\033[0;34;34m"
-        print "\n\033[0;33;33mjermVC server reply\033[0m: {}".format(color)+reply.text+"\033[0m"
-
-        if "31;31m" in color: sys.exit()
-
         projects = reply.text
         if not projects:
             sys.exit("\n\033[0;31;31mno projects found in the jermVC repository\033[0m")
+
+        if "ERROR" in projects:
+            sys.exit("\n\033[0;33;33mserver reply: \033[0;31;31m{}\033[0m".format(projects))
+
 
         projects = projects.split(",")
         print "\033[0;33;33mprojects in repository:\033[0m\n"
@@ -551,7 +550,11 @@ Mandatory arguments to long options are mandatory for short options too.
         su = "http://{}:{}".format(jermVC_address, jermVC_twisted_port) if (not _su) else "http://{}:{}".format(_su, jermVC_twisted_port)
         su = su+"/" if not(su.endswith("/")) else su
 
-        print "\033[0;33;33mfetching <{}> repository version {}...\033[0m".format(project, version)
+        print "\033[0;33;33mfetching <{}> repository version <{}>...\033[0m".format(project, version)
+        try:
+            reply = requests.post(server_url+"log-project-fetch", data=data)
+        except:
+            sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
         try:
             reply = urllib.urlretrieve("{}{}/{}".format(su, project, version), filename=out)
         except:
@@ -567,6 +570,75 @@ Mandatory arguments to long options are mandatory for short options too.
 
         sys.exit("\nbye")        
 
+    if options.has_key("--vc-admin"):
+        print "\033[0;33;33mjermVC admin...\033[0m\n"
+
+        try: 
+            import requests
+        except: 
+            sys.exit("\033[0;31;31mplease install the \033[0;32;32mrequests\033[0m\033[0;31;31m library. its used for communication!\033[0m")
+
+        uname = raw_input("jerm-VC username: ")
+        pswd = getpass("jerm-VC password: ")
+        server_url = raw_input("jerm-VC address (default is <{}>): ".format(jermVC_address))
+
+        server_url = "http://{}:{}".format(jermVC_address, jermVC_port) if (not server_url) else "http://{}:{}".format(server_url, jermVC_port)
+        server_url = server_url+"/" if not(server_url.endswith("/")) else server_url
+
+        server_data = {"master":"{};{}".format(uname, pswd), "data":[]}
+
+        menus = {1:"add user account", 2:"edit user account", 3:"delete user account", 4:"view all users", 5:"exit"}
+        while 1:
+            os.system('cls' if os.name=='nt' else 'clear')
+            data = []
+            print "\nmenu:"
+            for menu in menus: print " {}) {}".format(menu, menus[menu])
+
+            try: selection = input("\nmenu item number: ")
+            except: sys.exit("\033[0;31;31msilly input entered\033[0m")
+            
+            if selection>len(menus) or selection<1: sys.exit("\033[0;31;31msilly input entered\033[0m")
+            if selection==len(menus): sys.exit("\nbye")     
+            
+            if selection==1:
+                data.append("add-user")
+                new_uname, new_pswd = raw_input("  username: "), raw_input(" password: ")
+                data.append(new_uname)
+                data.append(new_pswd)
+
+            elif selection==2:
+                data.append("edit-user")
+                new_pswd = raw_input(" new password: ")
+                
+                data.append(uname)
+                data.append(pswd)
+                data.append(new_pswd)
+
+            elif selection==3:
+                data.append("delete-user")
+                user = raw_input(" username(account name): ")
+                
+                data.append(user)
+            
+            elif selection==4:
+                data.append("all-users")
+            
+            data = ";".join(data)    
+            
+            server_data["data"] = data    
+
+            print "\n\033[0;33;33mcommunication with the jermVC server...\033[0m"
+            try:
+                reply = requests.post(server_url+"data", data=server_data).text
+            except:
+                sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
+
+            print "\n\033[0;33;33mserver reply\033[0m: ",
+            if "ERROR" in reply: print "\033[0;31;31m{}\033[0m".format(reply)
+            else:  print "\033[0;32;32m{}\033[0m".format(reply)
+            
+            raw_input("\npress enter to continue...")
+                            
     parent = None
 
     if options.has_key('-p'): parent=options['-p']
