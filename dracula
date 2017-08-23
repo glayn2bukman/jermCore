@@ -22,8 +22,8 @@
 ############# GETTING COMMANDLINE PASSWORD ###############
 import sys
 
-jermVC_address = "0.0.0.0"
-jermVC_port = 9999
+jermVC_address = "139.162.235.29"
+jermVC_port = 9997
 jermVC_twisted_port = 9998
 jermVC_password = "jermVC"
 
