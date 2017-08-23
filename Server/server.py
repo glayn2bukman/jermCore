@@ -223,6 +223,6 @@ def log_project_fetch():
 if __name__=="__main__":
     import threading
     threading.Thread(target=os.system, args=("twistd -n web --path=\"{}\" -p 9998".format(os.path.join(path, "projects")), )).start()
-    app.run("0.0.0.0", 9999, debug=1, threaded=1)
+    app.run("0.0.0.0", 9997, debug=1, threaded=1)
     
     
