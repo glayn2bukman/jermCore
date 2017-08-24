@@ -81,14 +81,15 @@ def getpass(prompt="Password: ", mask='.'):
             print
             return password
 
-        if str(ord(c))=='65' or \
-            str(ord(c))=='66' or \
-            str(ord(c))=='67' or \
-            str(ord(c))=='68' or \
-            str(ord(c))=='27' or \
-            str(ord(c))=='91': # left n right
-            continue
-        elif str(ord(c))=='127': # backspace
+
+#        if str(ord(c))=='65' or \
+#            str(ord(c))=='66' or \
+#            str(ord(c))=='67' or \
+#            str(ord(c))=='68' or \
+#            str(ord(c))=='27' or \
+#            str(ord(c))=='91': # left n right
+#            continue
+        if str(ord(c))=='127': # backspace
             continue
 
         password += c
@@ -555,12 +556,22 @@ Mandatory arguments to long options are mandatory for short options too.
             reply = requests.post(server_url+"log-project-fetch", data=data)
         except:
             sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
+
+#        try:
+#            reply = requests.post(server_url+"fetch_project_version", data=data)
+#        except:
+#            sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
+
         try:
-            reply = urllib.urlretrieve("{}{}/{}".format(su, project, version), filename=out)
+            reply = urllib.urlretrieve(server_url+"fetch_project_version_2/"+urllib.quote("{}/{}/{}/{}".format(uname, pswd, project, version)), filename=out)
         except:
             sys.exit("\n\033[0;31;31mfailed to connect to the jermVC server. is the server address correct? if so, are you connected to the network?")
 
         #with open(out, "wb") as fout: fout.write(unicode(reply.text).encode("utf-8"))
+
+        #projectdata = unicode(reply.text).encode("utf-8")
+
+        #with open(out, "wb") as fout: fout.write(reply.text)
 
         files = []
         status = extract(out, files, out[:-1*len(".jerm")], password=jermVC_password)
@@ -602,7 +613,7 @@ Mandatory arguments to long options are mandatory for short options too.
             
             if selection==1:
                 data.append("add-user")
-                new_uname, new_pswd = raw_input("  username: "), raw_input(" password: ")
+                new_uname, new_pswd = raw_input(" username: "), raw_input(" password: ")
                 data.append(new_uname)
                 data.append(new_pswd)
 

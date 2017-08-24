@@ -1,4 +1,4 @@
-from flask import Flask, request, Response, send_from_directory
+from flask import Flask, request, Response, send_from_directory, stream_with_context
 import os, cPickle, time
 
 app = Flask(__name__)
@@ -207,7 +207,35 @@ def fetch_project_version():
 
     log("user <{}> fetching project <{}>, version <{}>".format(request.form["uname"], project, projectversion))
 
-    return send_from_directory(os.path.join(projects_dir, project), projectversion)
+    #return send_from_directory(os.path.join(projects_dir, project), projectversion)
+
+    filedata = ""
+    with open(os.path.join(projects_dir, project, projectversion), 'rb') as r: filedata = r.read()
+#        for line in r:
+#            filedata = filedata + filedata
+
+    response = Response(filedata)
+    response.headers["Access-Control-Allow-Origin"] = "*" # allow all domains...
+    response.headers['Content-Type'] = "application/octet-stream"
+    response.headers['Content-Disposition'] = "inline; filename=" + projectversion
+
+    return response
+
+@app.route("/fetch_project_version_2/<uname>/<pswd>/<project>/<version>", methods=["GET", "POST"])
+def fetch_project_version_2(uname,pswd,project,version):
+    print uname, pswd, project, version
+
+    if not authenticate(uname, pswd): return reply_to_remote(ERRORS["auth-error"])
+    log("user <{}> logged in".format(uname))
+    
+    def streamer():
+        with open(os.path.join(projects_dir, project, version), 'rb') as r:
+            for line in r.readlines(): yield line
+
+    response = Response(stream_with_context(streamer()))
+    response.headers["Access-Control-Allow-Origin"] = "*" # allow all domains...
+
+    return response    
 
 @app.route("/log-project-fetch", methods=["POST"])
 def log_project_fetch():
@@ -221,8 +249,8 @@ def log_project_fetch():
     return reply_to_remote("0")
 
 if __name__=="__main__":
-    import threading
-    threading.Thread(target=os.system, args=("twistd -n web --path=\"{}\" -p 9998".format(os.path.join(path, "projects")), )).start()
+    #import threading
+    #threading.Thread(target=os.system, args=("twistd -n web --path \"{}\" -p 9998".format(os.path.join(path, "projects")), )).start()
     app.run("0.0.0.0", 9997, debug=1, threaded=1)
     
     
