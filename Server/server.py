@@ -3,7 +3,7 @@ import os, cPickle, time
 
 app = Flask(__name__)
 
-jermUser = {"jerm":"jerm123#"}
+jermUSER = {"jerm":"jerm123#"}
 jermExt = ".jerm"
 
 path = os.path.dirname(__file__)
@@ -113,7 +113,7 @@ def jerm_dracula_data():
     
     if data[0]!="edit-user":
         # only the jerm super admin/user may do this...
-        if jermUser.keys()[0]+";"+jermUser.values()[0] != request.form["master"]: return reply_to_remote(ERRORS["auth-error"])
+        if jermUSER.keys()[0]+";"+jermUSER.values()[0] != request.form["master"]: return reply_to_remote(ERRORS["auth-error"])
     
     if data[0]=="add-user":
         status = add_user(data[1], data[2])
