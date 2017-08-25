@@ -354,7 +354,7 @@ Mandatory arguments to long options are mandatory for short options too.
   --clone                   clone remote JERM repository
   --vc-admin                add/remove and edit vc-users, view all JERM repositories 
 
-        """
+        \033[0m"""
 
     if len(sys.argv)==1:
         help()
@@ -420,6 +420,9 @@ Mandatory arguments to long options are mandatory for short options too.
         server_url = raw_input("jerm-VC address (default is <{}>): ".format(jermVC_address))
         project = raw_input("project's path: ")
         version = raw_input("project's version/comment (<=60 xters): ")
+        
+        if project==".":
+            sys.exit("\033[0;31;31mcant --vc a directory in which dracula is run! cd out of this directory then perform --vc on it\033[0m")
         
         server_url = "http://{}:{}".format(jermVC_address, jermVC_port) if (not server_url) else "http://{}:{}".format(server_url, jermVC_port)
         server_url = server_url+"/" if not(server_url.endswith("/")) else server_url
