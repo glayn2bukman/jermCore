@@ -1,7 +1,10 @@
 from flask import Flask, request, Response, send_from_directory, stream_with_context
-import os, cPickle, time
+import os, cPickle, time, json
+
+from flask_httpauth import HTTPBasicAuth
 
 app = Flask(__name__)
+auth = HTTPBasicAuth()
 
 jermUSER = {"jerm":"jerm123#"}
 jermExt = ".jerm"
@@ -34,7 +37,29 @@ def log(msg):
         f.write("\n({}) {}".format(time.asctime(), msg.replace("\n", ".")))
     
 
-##################################### USER ACCOUNTS #####################################
+##################################### USER ACCOUNTS $ PROJECTS #####################################
+def project_teams():
+    if not os.path.isfile(os.path.join(path, "jerm-dracula-projects.jermprojects")): 
+        cPickle.dump({}, open(os.path.join(path, "jerm-dracula-projects.jermprojects"), "wb"), 2)
+
+    projects = cPickle.load(open(os.path.join(path, "jerm-dracula-projects.jermprojects"), "rb"))
+        
+    return projects
+
+def add_project(project, added_by):
+    if not os.path.isfile(os.path.join(path, "jerm-dracula-projects.jermprojects")): 
+        cPickle.dump({}, open(os.path.join(path, "jerm-dracula-projects.jermprojects"), "wb"), 2)
+
+    projects = cPickle.load(open(os.path.join(path, "jerm-dracula-projects.jermprojects"), "rb"))
+    projects[project] = [added_by]
+    cPickle.dump(projects, open(os.path.join(path, "jerm-dracula-projects.jermprojects"), "wb"), 2)
+    
+def shuffle_projects(projects):
+    if not os.path.isfile(os.path.join(path, "jerm-dracula-projects.jermprojects")): 
+        cPickle.dump({}, open(os.path.join(path, "jerm-dracula-projects.jermprojects"), "wb"), 2)
+    
+    cPickle.dump(projects, open(os.path.join(path, "jerm-dracula-projects.jermprojects"), "wb"), 2)
+
 def authenticate(uname, pswd):
     if not os.path.isfile(os.path.join(path, "jerm-dracula-users.jermauth")): 
         cPickle.dump(jermUSER, open(os.path.join(path, "jerm-dracula-users.jermauth"), "wb"), 2)
@@ -45,6 +70,19 @@ def authenticate(uname, pswd):
     if not (uname in users): return 0
     if  users[uname]!=pswd: return 0
     return 1
+
+@auth.get_password
+def gui_auth(uname):
+    "this will be used to authenticate users acessing the dracula UI tool (the admins)"
+    if not (uname in ["jerm", "richard", "bukman", "henry", "jeromia"]): return None
+
+    if not os.path.isfile(os.path.join(path, "jerm-dracula-users.jermauth")): 
+        cPickle.dump(jermUSER, open(os.path.join(path, "jerm-dracula-users.jermauth"), "wb"), 2)
+
+    users = cPickle.load(open(os.path.join(path, "jerm-dracula-users.jermauth"), "rb"))
+
+    return users.get(uname, None)
+
 
 def add_user(uname, pswd):
     if not os.path.isfile(os.path.join(path, "jerm-dracula-users.jermauth")):
@@ -65,7 +103,21 @@ def get_all_users():
 
     users = cPickle.load(open(os.path.join(path, "jerm-dracula-users.jermauth"), "rb"))
 
-    return users.keys()
+    return [k for k in users.keys() if not(k in ["jerm","bukman","richard","henry","jeromia"])]
+
+def shuffle_users(new_users):
+    if not os.path.isfile(os.path.join(path, "jerm-dracula-users.jermauth")):
+        cPickle.dump(jermUSER, open(os.path.join(path, "jerm-dracula-users.jermauth"), "wb"), 2)
+
+    users = cPickle.load(open(os.path.join(path, "jerm-dracula-users.jermauth"), "rb"))
+
+    all_users = {}
+    
+    for nu in new_users:
+        if nu in users: all_users[nu] = users[nu]
+        else: all_users[nu] = nu 
+
+    cPickle.dump(all_users, open(os.path.join(path, "jerm-dracula-users.jermauth"), "wb"), 2)
 
 def delete_user(uname):
     if not os.path.isfile(os.path.join(path, "jerm-dracula-users.jermauth")):
@@ -123,6 +175,7 @@ def jerm_dracula_data():
         status = delete_user(data[1])
     elif data[0]=="all-users":
         status = get_all_users()
+        status.sort()
 
         _s = ""
         for i, s in enumerate(status): _s += "\n {}) {}".format(i+1, s)
@@ -152,11 +205,13 @@ def upload_project():
 
     projectname = ".".join(project.filename.split(".")[:-1])
 
-    if not os.path.isdir(os.path.join(projects_dir, projectname)): os.mkdir(os.path.join(projects_dir, projectname))
+    if not os.path.isdir(os.path.join(projects_dir, projectname)): 
+        add_project(projectname, request.form["uname"])
+        os.mkdir(os.path.join(projects_dir, projectname))
 
     project.save(os.path.join(projects_dir, projectname, version+jermExt))
     
-    log("project <{}>, version <{}> uploaded".format(project, version))
+    log("project <{}>, version <{}> uploaded".format(projectname, version))
     
     return reply_to_remote("project uploaded sucesfully")
 
@@ -170,6 +225,7 @@ def list_projects():
 
     log("user <{}> listing all jerm projects".format(request.form["uname"]))
 
+    projects.sort()
     return reply_to_remote(",".join(projects))
 
 @app.route("/list_project_versions", methods=["POST"])
@@ -188,6 +244,7 @@ def list_project_versions():
 
     log("user <{}> listing all versions of project <{}>".format(request.form["uname"], project))
 
+    versions.sort()
     return reply_to_remote("\n".join(versions))
 
 @app.route("/fetch_project_version", methods=["POST"])
@@ -247,6 +304,38 @@ def log_project_fetch():
         request.form["version"],
     ))
     return reply_to_remote("0")
+
+########################################## dracula UI admin tool #############################
+@app.route("/ui-update", methods=["POST"])
+#@auth.login_required
+def ui_update():
+    data = json.JSONDecoder().decode(request.form["json"])
+    #data = json.JSONDecoder().decode(request.json)
+    
+    # data format;
+    #   {
+    #       "users":['u1', 'u2',...] # dont include <jerm,richard,jeromia,henry,bukman>
+    #                                # if uname is new, default pswd=uname 
+    #       "projects":
+    #           {
+    #               'p1':['u1','u2',...],
+    #               'p2':['u1','u2',...],
+    #               ...
+    #           } 
+    #   }
+    
+    print data
+    
+    shuffle_projects(data["projects"])
+    shuffle_users(data["users"])
+    
+    return reply_to_remote("data updated sucessfully!")
+
+@app.route("/project-teams", methods=["POST"])
+def get_project_teams():
+    projects = project_teams()
+    
+    return reply_to_remote(json.JSONEncoder().encode(projects))
 
 if __name__=="__main__":
     #import threading
